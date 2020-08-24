@@ -1,5 +1,4 @@
 from casadi import *
-import matplotlib.pyplot as plt
 import numpy as np
 
 # declaring some parameters
