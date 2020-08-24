@@ -31,7 +31,7 @@ slip_ratio_rear = x1[4]  # rear longitudinal slip ratio
 ay1 = SX.sym("ay1", 1)
 
 # starting to create the symbolic expression for the acceleration
-vel = sqrt(ay1/R)
+vel = sqrt(ay1 * R)
 vx = vel * cos(beta)
 vy = vel * sin(beta)
 
@@ -122,8 +122,9 @@ while go_ahead:
     # print("sol x before for loop is", sol_x)
     # print("opt x before for loop is", opt_x)
 
-    # loop to check if the optimal variables found differ with the previous one more than tol
-    # if the difference is 'big' another optimization will take place with the new value of ay1
+    # loop to check if the optimal variables found differ with the previous one more than the tolerance
+    # if the difference is 'big' another optimization will take place with the new value of ay1 (ay1 is starting ay to
+    # get the car velocity)
     for x0, x1 in zip(opt_x, sol_x):
         if np.abs(x0-x1) < tol:
             go_ahead = False
@@ -152,3 +153,4 @@ print("-----")
 
 # print(f_vel(ay2))
 # print(ay2)
+
