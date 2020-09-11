@@ -18,14 +18,13 @@ D = 1
 E = 20
 
 # declaring symbolic variables
-x1 = SX.sym("x1", 5)
+x1 = SX.sym("x1", 4)
 
 # easier name for symbolic variables
 delta = x1[0]  # steering angle of the front wheel
 beta = x1[1]  # car side slip angle
-yaw_rate = x1[2]  # car yaw rate
-slip_ratio_front = x1[3]  # front longitudinal slip ratio
-slip_ratio_rear = x1[4]  # rear longitudinal slip ratio
+slip_ratio_front = x1[2]  # front longitudinal slip ratio
+slip_ratio_rear = x1[3]  # rear longitudinal slip ratio
 
 # declaring a symbolic parameter
 ay1 = SX.sym("ay1", 1)
@@ -35,8 +34,17 @@ vel = sqrt(ay1 * R)
 vx = vel * cos(beta)
 vy = vel * sin(beta)
 
+yaw_rate = vel / R
+
+# casadi function to calculate final car yaw rate
+f_yaw_rate = Function("f_yaw_rate", [ay1], [yaw_rate])
+
 Saf = -delta + atan((vy + lf * yaw_rate) / vx)  # front slip angle
 Sar = atan((vy - lr * yaw_rate) / vx)  # rear slip angle
+
+# casadi function to calculate slip angles
+f_saf = Function("f_saf", [delta, beta, ay1], [Saf])
+f_sar = Function("f_sar", [delta, beta, ay1], [Sar])
 
 # tire force calculation
 # first we calculate the pure tire force the the combined
@@ -45,11 +53,19 @@ Fypf = -A * sin(B * atan(C * tan(Saf)))
 Fxpr = A * sin(B * atan(C * slip_ratio_rear))
 Fypr = -A * sin(B * atan(C * tan(Sar)))
 
+# casadi function to calculate lateral pure tire forces
+f_fypf = Function("f_fypf", [delta, beta, ay1], [Fypf])
+f_fypr = Function("f_fypr", [delta, beta, ay1], [Fypr])
+
 # combined tire force
 Fxf = Fxpf * cos(D * atan(E * tan(Saf)))
 Fyf = Fypf * cos(D * atan(E * slip_ratio_front))
 Fxr = Fxpr * cos(D * atan(E * tan(Sar)))
 Fyr = Fypr * cos(D * atan(E * slip_ratio_rear))
+
+# casadi function to calculate lateral combined tire forces
+f_fyf = Function("f_fyf", [delta, beta, slip_ratio_front, ay1], [Fyf])
+f_fyr = Function("f_fyr", [delta, beta, slip_ratio_rear, ay1], [Fyr])
 
 # force calculation on the vehicle
 Fy = Fyf * cos(delta) + Fxf * sin(delta) + Fyr
@@ -64,7 +80,7 @@ ax = 1/m * (Fy * sin(beta) + Fx * cos(beta))
 Power = Fxf * (vx * cos(delta) + vy * sin(delta)) * (1 + slip_ratio_front) + Fxr * vx * (1 + slip_ratio_rear)
 
 # variable to optimize are grouped together
-opt_var = [delta, beta, yaw_rate, slip_ratio_front, slip_ratio_rear]
+opt_var = [delta, beta, slip_ratio_front, slip_ratio_rear]
 
 # a casadi function is created to evaluate quickly the car speed
 f_vel = Function('vel', [ay1],  [vel])
@@ -88,15 +104,15 @@ if MySolver == "sqpmethod":
 solver = nlpsol("solver", MySolver, nlp, opts)
 
 # declaring the starting point
-x0 = [0.01, 0.01, 0.01, 0.01, 0.01]
+x0 = [0.01, 0.01, 0.01, 0.01]
 
 # declaring the lower and upper bound of the variable to optimize
-lbx = [-0.52, -0.34, -1.57, -0.1, -0.1]
-ubx = [0.52, 0.34, 1.57, 0.1, 0.1]
+lbx = [-0.52, -0.34, -0.1, -0.1]
+ubx = [0.52, 0.34, 0.1, 0.1]
 
 # initializing some list used to check the loop
-opt_x = [0, 0, 0, 0, 0]
-sol_x = [0, 0, 0, 0, 0]
+opt_x = [0, 0, 0, 0]
+sol_x = [0, 0, 0, 0]
 
 # max difference between two optimal variable to stop the while loop
 tol = 0.01
@@ -117,7 +133,6 @@ while go_ahead:
     sol_x[1] = sol["x"][1].__float__()
     sol_x[2] = sol["x"][2].__float__()
     sol_x[3] = sol["x"][3].__float__()
-    sol_x[4] = sol["x"][4].__float__()
 
     # print("sol x before for loop is", sol_x)
     # print("opt x before for loop is", opt_x)
@@ -144,13 +159,23 @@ while go_ahead:
 
 # Print solution
 print("-----")
-print("objective at solution = ", sol["f"])
-print("primal solution = ", sol["x"])
+print("objective at solution = ", sol["f"], "(normal acceleration)")
+print("primal solution = ", sol["x"], "(Steering angle, slip angle, front and rear slip ratio)")
 print("dual solution (x) = ", sol["lam_x"])
 print("dual solution (g) = ", sol["lam_g"])
 print("constraints value = ", sol["g"])
 print("-----")
-
-# print(f_vel(ay2))
-# print(ay2)
+print("Vel is [m/s]", f_vel(ay2))
+print("ay2 is [m/s^2]", ay2)
+print("-----")
+print("Front slip angle [rad] ", f_saf(sol["x"][0], sol["x"][1], ay2))
+print("Rear slip angle [rad] ", f_sar(sol["x"][0], sol["x"][1], ay2))
+print("-----")
+print("Front lateral pure force [N]", f_fypf(sol["x"][0], sol["x"][1], ay2))
+print("Rear lateral pure force [N]", f_fypr(sol["x"][0], sol["x"][1], ay2))
+print("-----")
+print("Front lateral combined force [N]", f_fyf(sol["x"][0], sol["x"][1], sol["x"][2], ay2))
+print("Rear lateral combined force [N]", f_fyr(sol["x"][0], sol["x"][1], sol["x"][3], ay2))
+print("-----")
+print("Yaw rate is [1/s]", f_yaw_rate(ay2))
 
