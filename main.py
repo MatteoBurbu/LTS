@@ -9,6 +9,8 @@ R = 20
 lf = 0.8  # front wheel base
 lr = 0.8  # rear wheel base
 m = 250  # vehicle mass
+h = 0.3  # cog height
+track = 1.2
 
 # tire parameters
 A = 1800
@@ -46,12 +48,33 @@ Sar = atan((vy - lr * yaw_rate) / vx)  # rear slip angle
 f_saf = Function("f_saf", [delta, beta, ay1], [Saf])
 f_sar = Function("f_sar", [delta, beta, ay1], [Sar])
 
+# move ay ( which is an) to the right reference system to calculate load transfers
+# ax1 = - ay1 * sin(beta)
+ay3 = ay1 * cos(beta)
+
+fz_fr = m * 9.81 * lr / ( (lr + lf) * 2 ) - ay3 * ( h / track )
+fz_fl = m * 9.81 * lr / ( (lr + lf) * 2 ) + ay3 * ( h / track )
+fz_rr = m * 9.81 * lf / ( (lr + lf) * 2 ) - ay3 * ( h / track )
+fz_rl = m * 9.81 * lf / ( (lr + lf) * 2 ) + ay3 * ( h / track )
+
+f_fzfr = Function("f_fzfr", [delta, beta, ay1], [fz_fr])
+f_fzfl = Function("f_fzfl", [delta, beta, ay1], [fz_fl])
+f_fzrr = Function("f_fzrr", [delta, beta, ay1], [fz_rr])
+f_fzrl = Function("f_fzrl", [delta, beta, ay1], [fz_rl])
+
+load_f = ( 1.5 * atan( fz_fr / 900 ) + 1.5 * atan( fz_fl / 900 ) ) / 2
+load_r = ( 1.5 * atan( fz_rr / 900 ) + 1.5 * atan( fz_rl / 900 ) ) / 2
+
+f_loadf = Function("f_loadf", [delta, beta, ay1], [load_f])
+f_loadr = Function("f_loadr", [delta, beta, ay1], [load_r])
+
 # tire force calculation
 # first we calculate the pure tire force the the combined
-Fxpf = A * sin(B * atan(C * slip_ratio_front))
-Fypf = -A * sin(B * atan(C * tan(Saf)))
-Fxpr = A * sin(B * atan(C * slip_ratio_rear))
-Fypr = -A * sin(B * atan(C * tan(Sar)))
+Fxpf = load_f * A * sin(B * atan(C * slip_ratio_front))
+Fypf = - load_f * A * sin(B * atan(C * tan(Saf)))
+Fxpr = load_r * A * sin(B * atan(C * slip_ratio_rear))
+Fypr = - load_r * A * sin(B * atan(C * tan(Sar)))
+
 
 # casadi function to calculate lateral pure tire forces
 f_fypf = Function("f_fypf", [delta, beta, ay1], [Fypf])
@@ -178,4 +201,11 @@ print("Front lateral combined force [N]", f_fyf(sol["x"][0], sol["x"][1], sol["x
 print("Rear lateral combined force [N]", f_fyr(sol["x"][0], sol["x"][1], sol["x"][3], ay2))
 print("-----")
 print("Yaw rate is [1/s]", f_yaw_rate(ay2))
-
+print("-----")
+print("Front right vertical load ", f_fzfr(sol["x"][0], sol["x"][1], ay2))
+print("Front left vertical load ", f_fzfl(sol["x"][0], sol["x"][1], ay2))
+print("Rear right vertical load ", f_fzrr(sol["x"][0], sol["x"][1], ay2))
+print("Real left vertical load ", f_fzrl(sol["x"][0], sol["x"][1], ay2))
+print("-----")
+print("Front load coefficent ", f_loadf(sol["x"][0], sol["x"][1], ay2))
+print("Rear load coefficent ", f_loadr(sol["x"][0], sol["x"][1], ay2))
