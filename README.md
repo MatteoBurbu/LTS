@@ -1,2 +1,2 @@
 # LTS
-Lap Time Simulator 
+An attempt to a Lap Time Simulator 
