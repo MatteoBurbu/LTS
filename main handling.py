@@ -3,9 +3,6 @@ from math import *
 import numpy as np
 import matplotlib.pyplot as plt
 
-delta = 0.54  # [rad]
-vx = 8  # [m/s]
-
 track = 1.2  # [m] (same front and rear)
 lf = 0.9  # front wheel base
 lr = 0.7  # rear wheel base
@@ -24,6 +21,7 @@ p_tire = 85 * 1000  # N/m (tyre vertical stiffness)
 k_tyre_f = (p_tire * track ** 2) / 2  # Nm/rad (just tyres, rigid susp and ARB)
 k_tyre_r = (p_tire * track ** 2) / 2
 
+print("------")
 print("tyre roll stiffness =", [k_tyre_f, k_tyre_r])
 
 k_f = (k_susp_f * k_tyre_f) / (k_susp_f + k_tyre_f)  # Nm/rad (tyres and suspension)
@@ -34,15 +32,21 @@ k_roll = k_f + k_r
 
 print("roll stiffness = ", [k_roll])
 
-# pajecka parameters
+# pajecka coefficients
 B = 12.27
 C = 1.48
 D = -1100
 E = 0.07
 
+# coefficients for fz dependency in the tyre model
+load_A = 1.5
+load_B = 900
 
-def equation(vars):
+
+def equation(vars, data):
     vy, yaw_rate, Y1, Y2 = vars
+    delta = data[0]  # [rad]
+    vx = data[1]  # [m/s]
 
     # imposing longitudinal slip = 0, we can retrieve the rolling speed
     wr_11 = ((vx - yaw_rate * track * 0.5) * np.cos(delta) + (vy + yaw_rate * lf * 0.5) * np.sin(delta))
@@ -66,10 +70,10 @@ def equation(vars):
     fz_21 = 0.5 * (m * 9.81 * lf / (lr + lf)) - Delta_Z_2
     fz_22 = 0.5 * (m * 9.81 * lf / (lr + lf)) + Delta_Z_2
 
-    load_11 = 1.5 * np.arctan(fz_11 / 900)
-    load_12 = 1.5 * np.arctan(fz_12 / 900)
-    load_21 = 1.5 * np.arctan(fz_21 / 900)
-    load_22 = 1.5 * np.arctan(fz_22 / 900)
+    load_11 = load_A * np.arctan(fz_11 / load_B)
+    load_12 = load_A * np.arctan(fz_12 / load_B)
+    load_21 = load_A * np.arctan(fz_21 / load_B)
+    load_22 = load_A * np.arctan(fz_22 / load_B)
 
     Fy11 = load_11 * D * np.sin(C * np.arctan(B * slip_y_11 - E * (B * slip_y_11 - np.arctan(B * slip_y_11))))
     Fy12 = load_12 * D * np.sin(C * np.arctan(B * slip_y_12 - E * (B * slip_y_12 - np.arctan(B * slip_y_12))))
@@ -86,7 +90,10 @@ def equation(vars):
     return [eq1, eq2, eq3, eq4]
 
 
-def results(vy, yaw_rate, Y1, Y2):
+def results(vy, yaw_rate, Y1, Y2, data, plot_graph=True):
+    delta = data[0]  # [rad]
+    vx = data[1]  # [m/s]
+
     wr_11 = ((vx - yaw_rate * track * 0.5) * cos(delta) + (vy + yaw_rate * lf * 0.5) * sin(delta))
     wr_12 = ((vx + yaw_rate * track * 0.5) * cos(delta) + (vy + yaw_rate * lf * 0.5) * sin(delta))
     wr_21 = (vx - yaw_rate * track * 0.5) * cos(delta)
@@ -106,10 +113,10 @@ def results(vy, yaw_rate, Y1, Y2):
     fz_21 = 0.5 * (m * 9.81 * lf / (lr + lf)) - Delta_Z_2
     fz_22 = 0.5 * (m * 9.81 * lf / (lr + lf)) + Delta_Z_2
 
-    load_11 = 1.5 * atan(fz_11 / 600)
-    load_12 = 1.5 * atan(fz_12 / 600)
-    load_21 = 1.5 * atan(fz_21 / 600)
-    load_22 = 1.5 * atan(fz_22 / 600)
+    load_11 = load_A * atan(fz_11 / load_B)
+    load_12 = load_A * atan(fz_12 / load_B)
+    load_21 = load_A * atan(fz_21 / load_B)
+    load_22 = load_A * atan(fz_22 / load_B)
 
     Fy11 = load_11 * D * sin(C * atan(B * slip_y_11 - E * (B * slip_y_11 - atan(B * slip_y_11))))
     Fy12 = load_12 * D * sin(C * atan(B * slip_y_12 - E * (B * slip_y_12 - atan(B * slip_y_12))))
@@ -123,6 +130,8 @@ def results(vy, yaw_rate, Y1, Y2):
     vel = sqrt(vx ** 2 + vy ** 2)
     an = -ax * sin(beta) + ay * cos(beta)
     at = ax * cos(beta) + ay * sin(beta)
+    rho = yaw_rate / vx
+    R = 1 / rho
 
     DeltaX_1 = (Fy11 * np.sin(delta) - Fy12 * np.sin(delta)) / 2
 
@@ -132,10 +141,12 @@ def results(vy, yaw_rate, Y1, Y2):
     check_Y1 = abs((Y1 - Fy11 * cos(delta) - Fy12 * cos(delta)) / Y1)
     check_Y2 = abs((Y2 - Fy21 - Fy22) / Y2)
 
+    # static vertical laod
     Z0_f = 0.5 * (m * 9.81 * lr / (lr + lf))
     Z0_r = 0.5 * (m * 9.81 * lf / (lr + lf))
 
     results_dict = {
+        "sol" : [vy, yaw_rate, Y1, Y2],
         "wr": [wr_11, wr_12, wr_21, wr_22],
         "slip_y": [slip_y_11, slip_y_12, slip_y_21, slip_y_22],
         "Delta_Z": [Delta_Z_1, Delta_Z_2],
@@ -151,90 +162,121 @@ def results(vy, yaw_rate, Y1, Y2):
         "check_Y1": check_Y1,
         "check_Y2": check_Y2,
         "check_eq1": check_eq1,
-        "check_eq2": check_eq2
+        "check_eq2": check_eq2,
+        "R": R,
+        "rho": rho
     }
 
-    slip_plot = np.linspace(-0.4, 0.4, 1000)
-    load_f_static = 1.5 * atan(Z0_f / 900)
-    load_r_static = 1.5 * atan(Z0_r / 900)
-    Fy_f_plot = load_f_static * D * np.sin(
-        C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
-    Fy_r_plot = load_r_static * D * np.sin(
-        C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
+    if plot_graph:
+        slip_plot = np.linspace(-0.4, 0.4, 1000)
+        load_f_static = load_A * atan(Z0_f / load_B)
+        load_r_static = load_A * atan(Z0_r / load_B)
+        Fy_f_plot = load_f_static * D * np.sin(
+            C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
+        Fy_r_plot = load_r_static * D * np.sin(
+            C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
 
-    Fy_11_plot = load_11 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
-    Fy_12_plot = load_12 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
-    Fy_21_plot = load_21 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
-    Fy_22_plot = load_22 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
+        Fy_11_plot = load_11 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
+        Fy_12_plot = load_12 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
+        Fy_21_plot = load_21 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
+        Fy_22_plot = load_22 * D * np.sin(C * np.arctan(B * slip_plot - E * (B * slip_plot - np.arctan(B * slip_plot))))
 
-    fig, axs = plt.subplots(2, 2, sharey=True)
+        fig, axs = plt.subplots(2, 2, sharey=True)
 
-    axs[0, 0].grid(True)
-    axs[0, 0].plot(slip_plot, Fy_f_plot, "b--", label="Static")
-    axs[0, 0].plot(slip_plot, Fy_11_plot, 'b-', label="Solved")
-    axs[0, 0].plot(slip_y_11, Fy11, "cx")
-    axs[0, 0].set_title('Fy 11')
-    axs[0, 0].legend()
-    # axs[0, 1].sharey(axs[0, 0])
-    axs[0, 1].grid(True)
-    axs[0, 1].plot(slip_plot, Fy_f_plot, "r--", label="Static")
-    axs[0, 1].plot(slip_plot, Fy_12_plot, 'r-', label="Solved")
-    axs[0, 1].plot(slip_y_12, Fy12, "cx")
-    axs[0, 1].set_title('Fy 12')
-    axs[0, 1].legend()
-    # axs[1, 1].sharey(axs[1, 0])
-    axs[1, 0].grid(True)
-    axs[1, 0].plot(slip_plot, Fy_r_plot, "g--", label="Static")
-    axs[1, 0].plot(slip_plot, Fy_21_plot, 'g-', label="Solved")
-    axs[1, 0].plot(slip_y_21, Fy21, "cx")
-    axs[1, 0].set_title('Fy 21')
-    axs[1, 0].legend()
-    axs[1, 1].grid(True)
-    axs[1, 1].plot(slip_plot, Fy_r_plot, "k--", label="Static")
-    axs[1, 1].plot(slip_plot, Fy_22_plot, 'k-', label="Solved")
-    axs[1, 1].plot(slip_y_22, Fy22, "cx")
-    axs[1, 1].set_title('Fy 22')
-    axs[1, 1].legend()
+        axs[0, 0].grid(True)
+        axs[0, 0].plot(slip_plot, Fy_f_plot, "b--", label="Static")
+        axs[0, 0].plot(slip_plot, Fy_11_plot, 'b-', label="Solved")
+        axs[0, 0].plot(slip_y_11, Fy11, "cx")
+        axs[0, 0].set_title('Fy 11')
+        axs[0, 0].legend()
+        # axs[0, 1].sharey(axs[0, 0])
+        axs[0, 1].grid(True)
+        axs[0, 1].plot(slip_plot, Fy_f_plot, "r--", label="Static")
+        axs[0, 1].plot(slip_plot, Fy_12_plot, 'r-', label="Solved")
+        axs[0, 1].plot(slip_y_12, Fy12, "cx")
+        axs[0, 1].set_title('Fy 12')
+        axs[0, 1].legend()
+        # axs[1, 1].sharey(axs[1, 0])
+        axs[1, 0].grid(True)
+        axs[1, 0].plot(slip_plot, Fy_r_plot, "g--", label="Static")
+        axs[1, 0].plot(slip_plot, Fy_21_plot, 'g-', label="Solved")
+        axs[1, 0].plot(slip_y_21, Fy21, "cx")
+        axs[1, 0].set_title('Fy 21')
+        axs[1, 0].legend()
+        axs[1, 1].grid(True)
+        axs[1, 1].plot(slip_plot, Fy_r_plot, "k--", label="Static")
+        axs[1, 1].plot(slip_plot, Fy_22_plot, 'k-', label="Solved")
+        axs[1, 1].plot(slip_y_22, Fy22, "cx")
+        axs[1, 1].set_title('Fy 22')
+        axs[1, 1].legend()
 
-    for ax in axs.flat:
-        ax.set(xlabel='x-label', ylabel='y-label')
+        for ax in axs.flat:
+            ax.set(xlabel='x-label', ylabel='y-label')
 
-    # Hide x labels and tick labels for top plots and y ticks for right plots.
-    for ax in axs.flat:
-        ax.label_outer()
-    fig.show()
+        # Hide x labels and tick labels for top plots and y ticks for right plots.
+        for ax in axs.flat:
+            ax.label_outer()
+        fig.show()
 
     return results_dict
 
 
-x0 = np.array(
-    [0.020535202375985284, 0.03129688812951281, 34.23637790713754, 44.00584241664449])  # solution with delta = 0.005
-x0 = np.array(
-    [0.030803785010136024, 0.04694664932690694, 51.36614137934629, 66.00048193792107])  # solution with delta = 0.0075
-x0 = np.array([0.03826447493541441, 0.06269163550884618, 34.32244562270847, 44.04209876334926])
+def print_results(r_dict):
+    print("------")
+    print("v, r, y1, y2 =", r_dict["sol"])
+    print("------")
+    print("check on eq 1 (should be zero)", r_dict["check_eq1"])
+    print("check on eq 2 (should be zero)", r_dict["check_eq2"])
+    print("check on Y1 (eq3 normalized by Y1, should be zero)", r_dict["check_Y1"])
+    print("check on Y2 (eq4 normalized by Y2, should be zero)", r_dict["check_Y2"])
+    print("------")
+    print("load_coeff", r_dict["load_coeff"])
+    print("vertical load", r_dict["fz"])
+    print("static vertical load", r_dict["fz_static"])
+    print("lateral load transfer", r_dict["lateral_load_transfer"])
+    print("------")
+    print("lateral tire slip", r_dict["slip_y"])
+    print("lateral tire force", r_dict["fy"])
+    print("------")
+    print("acceleration in xy", r_dict["axy"])
+    print("acceleration in tn", r_dict["atn"])
+    print("------")
+    print("speed", r_dict["speed"])
+    print("vehicle side slip angel", r_dict["beta"])
+
+
+# inputs = [0.01, 12]  # [steering angle delta, vx]
 # x0 = np.array([0, 0, 0, 0])
-[v, r, y1, y2] = fsolve(equation, x0)
+# [v, r, y1, y2] = fsolve(equation, x0, args=inputs)
+# result_dict = results(v, r, y1, y2, inputs)
+# print_results(result_dict)
 
+velocity = [2, 5, 7, 8, 9, 10, 11, 12]
+fig2, ax2 = plt.subplots()
+for vel in velocity:
+    x0 = np.array([0, 0, 0, 0])
+    go_ahead = True
+    steering_angle = 0.01
+    steering_step = 0.01
+    velocity = 10
+    inputs = [steering_angle, vel]
+    curvature = []
+    steering = []
 
-print("------")
-print(v, r, y1, y2)
-r_dict = results(v, r, y1, y2)
-print("------")
-print("check on eq 1 (should be zero)", r_dict["check_eq1"])
-print("check on eq 2 (should be zero)", r_dict["check_eq2"])
-print("check on Y1 (eq3 normalized by Y1, should be zero)", r_dict["check_Y1"])
-print("check on Y2 (eq4 normalized by Y2, should be zero)", r_dict["check_Y2"])
-print("------")
-print("load_coeff", r_dict["load_coeff"])
-print("vertical load", r_dict["fz"])
-print("static vertical load", r_dict["fz_static"])
-print("lateral load transfer", r_dict["lateral_load_transfer"])
-print("------")
-print("lateral tire slip", r_dict["slip_y"])
-print("lateral tire force", r_dict["fy"])
-print("------")
-print("acceleration in xy", r_dict["axy"])
-print("acceleration in tn", r_dict["atn"])
-print("------")
-print("speed", r_dict["speed"])
-print("vehicle side slip angel", r_dict["beta"])
+    while go_ahead:
+        [v, r, y1, y2] = fsolve(equation, x0, args=inputs)
+        x0 = np.array([v, r, y1, y2])
+        inputs = [inputs[0] + steering_step, vel]
+        if inputs[0] > 0.53:
+            go_ahead = False
+        result_dict = results(v, r, y1, y2, inputs, False)
+        curvature.append(result_dict["rho"])
+        steering.append(inputs[0])
+
+    result_dict = results(v, r, y1, y2, inputs, False)
+    print_results(result_dict)
+
+    ax2.set_title("Road car rho vs delta")
+    ax2.plot(steering, curvature)
+plt.show()
+
